@@ -6,6 +6,7 @@ import { v2 as cloudinary } from 'cloudinary'
 import doctorModel from './../models/doctorModel.js';
 import appointmentModel from '../models/appointmentModel.js';
 import razorpay from 'razorpay';
+import { getFamilyMemberSnapshotForAppointment } from '../modules/family-accounts/index.js';
 
 
 
@@ -128,7 +129,15 @@ const bookAppointment = async (req, res) => {
     try {
 
         const { userId } = req.user;
-        const { docId, slotDate, slotTime } = req.body;
+        const { docId, slotDate, slotTime, familyMemberId } = req.body;
+
+        let familyMemberData = null;
+        if (familyMemberId) {
+            familyMemberData = await getFamilyMemberSnapshotForAppointment(userId, familyMemberId);
+            if (!familyMemberData) {
+                return res.json({ success: false, message: "Family member not found" });
+            }
+        }
 
         const docData = await doctorModel.findById(docId).select('-password');
 
@@ -162,7 +171,8 @@ const bookAppointment = async (req, res) => {
             amount: docData.fees,
             slotTime,
             slotDate,
-            date: Date.now()
+            date: Date.now(),
+            familyMemberData
         };
 
         const newAppointment = new appointmentModel(appointmentData);

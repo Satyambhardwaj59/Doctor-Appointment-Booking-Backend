@@ -78,7 +78,7 @@ export const createConsultation = async (appointmentId, requesterId, role = 'pat
   const consultation = new videoConsultationModel({
     appointmentId,
     doctorId: appointment.docId,
-    patientId,
+    patientId: appointment.userId,
     roomId,
     status: CONSULTATION_STATUS.UPCOMING,
   });

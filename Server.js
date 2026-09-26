@@ -9,6 +9,7 @@ import adminRouter from './routes/adminRoute.js';
 import doctorRouter from './routes/doctorRoute.js';
 import userRouter from './routes/userRoute.js';
 import { videoConsultationRouter, initVideoConsultationSocket } from './modules/video-consultation/index.js';
+import { familyAccountRouter } from './modules/family-accounts/index.js';
 
 // app config
 const app = express();
@@ -30,6 +31,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/doctor', doctorRouter);
 app.use('/api/user', userRouter);
 app.use('/api/video-consultations', videoConsultationRouter);
+app.use('/api/family-members', familyAccountRouter);
 
 app.get('/', (req, res) => {
   res.send('API working , form hello world')
