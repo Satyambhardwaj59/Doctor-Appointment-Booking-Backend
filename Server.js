@@ -10,6 +10,7 @@ import doctorRouter from './routes/doctorRoute.js';
 import userRouter from './routes/userRoute.js';
 import { videoConsultationRouter, initVideoConsultationSocket } from './modules/video-consultation/index.js';
 import { familyAccountRouter } from './modules/family-accounts/index.js';
+import { chatRouter, registerChatNamespace } from './modules/doctor-patient-chat/index.js';
 
 // app config
 const app = express();
@@ -20,9 +21,9 @@ connectCloudinary();
 // middlewares
 app.use(express.json());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
+  origin: process.env.FRONTEND_URL || true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'token', 'dtoken', 'atoken'],
+  allowedHeaders: ['Content-Type', 'token', 'dtoken', 'atoken', 'Authorization', 'authorization'],
   credentials: true,
 }));
 
@@ -32,6 +33,7 @@ app.use('/api/doctor', doctorRouter);
 app.use('/api/user', userRouter);
 app.use('/api/video-consultations', videoConsultationRouter);
 app.use('/api/family-members', familyAccountRouter);
+app.use('/api/chat', chatRouter);
 
 app.get('/', (req, res) => {
   res.send('API working , form hello world')
@@ -43,14 +45,15 @@ const httpServer = http.createServer(app);
 // Socket.IO — allows cross-origin from frontend
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || '*',
+    origin: process.env.FRONTEND_URL || true,
     methods: ['GET', 'POST'],
     credentials: true,
   },
 });
 
-// Initialize video consultation socket handlers
+// Initialize socket handlers
 initVideoConsultationSocket(io);
+registerChatNamespace(io);
 
 connectDB().then(() => {
   httpServer.listen(port, () => {
@@ -58,4 +61,4 @@ connectDB().then(() => {
   });
 }).catch(err => {
   console.error('Database connection failed:', err);
-})
+});

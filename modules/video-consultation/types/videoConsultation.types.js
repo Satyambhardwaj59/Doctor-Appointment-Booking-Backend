@@ -36,4 +36,9 @@ export const SOCKET_EVENTS = {
   CALL_ENDED: 'video:call-ended',
   CONNECTION_STATUS: 'video:connection-status',
   ERROR: 'video:error',
+  CALL_USER: 'video:call-user',
+  INCOMING_CALL: 'video:incoming-call',
+  ACCEPT_CALL: 'video:accept-call',
+  REJECT_CALL: 'video:reject-call',
+  CALL_REJECTED: 'video:call-rejected',
 };

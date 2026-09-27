@@ -1,9 +1,10 @@
 import * as videoConsultationService from '../services/videoConsultation.service.js';
 import { validateCreateConsultation, validateSubmitNotes } from '../validators/videoConsultation.validator.js';
+import { emitIncomingCallNotification } from '../sockets/videoConsultation.socket.js';
 
 /**
  * POST /api/video-consultations
- * Create a consultation for an appointment. Patient only.
+ * Create a consultation for an appointment. Patient or doctor.
  */
 export const createConsultation = async (req, res) => {
   try {
@@ -17,6 +18,10 @@ export const createConsultation = async (req, res) => {
     const role = req.user?.role || 'patient';
 
     const consultation = await videoConsultationService.createConsultation(appointmentId, requesterId, role);
+    
+    // Notify the other party about the incoming call session
+    emitIncomingCallNotification(consultation._id, requesterId, role).catch(() => {});
+
     res.json({ success: true, consultation });
   } catch (error) {
     res.status(error.statusCode || 500).json({ success: false, message: error.message });
@@ -43,8 +48,11 @@ export const getConsultation = async (req, res) => {
  */
 export const joinConsultation = async (req, res) => {
   try {
-    const { role } = req.user;
+    const { role, id } = req.user;
     const consultation = await videoConsultationService.joinConsultation(req.consultation, role);
+
+    // Notify the other party when user enters/joins
+    emitIncomingCallNotification(consultation._id, id, role).catch(() => {});
 
     res.json({
       success: true,

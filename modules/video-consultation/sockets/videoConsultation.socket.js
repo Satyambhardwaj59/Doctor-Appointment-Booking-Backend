@@ -1,9 +1,11 @@
 import jwt from 'jsonwebtoken';
 import videoConsultationModel from '../models/videoConsultationModel.js';
+import appointmentModel from '../../../models/appointmentModel.js';
 import { SOCKET_EVENTS, CONSULTATION_STATUS } from '../types/videoConsultation.types.js';
 
 // Track connected participants per room: Map<roomId, Set<socketId>>
 const roomParticipants = new Map();
+let activeVideoNamespace = null;
 
 /**
  * Verify a JWT and extract user info.
@@ -31,6 +33,7 @@ const verifyToken = (token, dtoken) => {
  */
 export const initVideoConsultationSocket = (io) => {
   const videoNamespace = io.of('/video');
+  activeVideoNamespace = videoNamespace;
 
   // ── Socket Authentication Middleware ──────────────────────────────────────
   videoNamespace.use((socket, next) => {
@@ -48,6 +51,36 @@ export const initVideoConsultationSocket = (io) => {
   // ── Connection Handler ────────────────────────────────────────────────────
   videoNamespace.on('connection', (socket) => {
     const { userId, role } = socket.data;
+
+    // Join personal user notification rooms so direct call invites can be delivered
+    socket.join(`user:${userId}`);
+    socket.join(`${role}:${userId}`);
+
+    // ── video:call-user (notify recipient) ──────────────────────────────────
+    socket.on(SOCKET_EVENTS.CALL_USER, async ({ consultationId }) => {
+      try {
+        if (!consultationId) return;
+        await emitIncomingCallNotification(consultationId, userId, role);
+      } catch (err) {
+        console.error('Error in video:call-user:', err);
+      }
+    });
+
+    // ── video:reject-call ──────────────────────────────────────────────────
+    socket.on(SOCKET_EVENTS.REJECT_CALL, ({ consultationId, callerId, callerRole }) => {
+      if (callerId) {
+        videoNamespace.to(`user:${callerId}`).emit(SOCKET_EVENTS.CALL_REJECTED, {
+          consultationId,
+          rejectedBy: userId,
+        });
+        if (callerRole) {
+          videoNamespace.to(`${callerRole}:${callerId}`).emit(SOCKET_EVENTS.CALL_REJECTED, {
+            consultationId,
+            rejectedBy: userId,
+          });
+        }
+      }
+    });
 
     // ── video:join-room ───────────────────────────────────────────────────
     socket.on(SOCKET_EVENTS.JOIN_ROOM, async ({ consultationId }) => {
@@ -205,3 +238,39 @@ export const initVideoConsultationSocket = (io) => {
     });
   });
 };
+
+/**
+ * Emit an incoming call notification to the recipient participant.
+ * Can be called from HTTP endpoints or internal socket events.
+ */
+export const emitIncomingCallNotification = async (consultationId, callerId, callerRole) => {
+  if (!activeVideoNamespace) return;
+  try {
+    const consultation = await videoConsultationModel.findById(consultationId);
+    if (!consultation) return;
+    const appointment = await appointmentModel.findById(consultation.appointmentId);
+    if (!appointment) return;
+
+    const isDoc = callerRole === 'doctor';
+    const recipientId = isDoc ? consultation.patientId : consultation.doctorId;
+    const recipientRole = isDoc ? 'patient' : 'doctor';
+
+    const callPayload = {
+      consultationId: consultation._id.toString(),
+      roomId: consultation.roomId,
+      appointmentId: consultation.appointmentId.toString(),
+      callerId,
+      callerRole,
+      callerName: isDoc ? (appointment.docData?.name || 'Doctor') : (appointment.userData?.name || 'Patient'),
+      callerImage: isDoc ? appointment.docData?.image : appointment.userData?.image,
+      callerSpeciality: isDoc ? appointment.docData?.speciality : undefined,
+      timestamp: new Date().toISOString(),
+    };
+
+    activeVideoNamespace.to(`user:${recipientId}`).emit(SOCKET_EVENTS.INCOMING_CALL, callPayload);
+    activeVideoNamespace.to(`${recipientRole}:${recipientId}`).emit(SOCKET_EVENTS.INCOMING_CALL, callPayload);
+  } catch (err) {
+    console.error('Error emitting incoming call notification:', err);
+  }
+};
+

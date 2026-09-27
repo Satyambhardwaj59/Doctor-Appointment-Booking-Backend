@@ -124,8 +124,14 @@ export const joinConsultation = async (consultation, role) => {
 
   const appointmentDate = parseAppointmentDateTime(appointment.slotDate, appointment.slotTime);
 
+  const shouldBypassWindow =
+    process.env.NODE_ENV !== 'production' ||
+    process.env.BYPASS_TIME_WINDOW === 'true' ||
+    consultation.status === CONSULTATION_STATUS.WAITING ||
+    consultation.status === CONSULTATION_STATUS.ACTIVE;
+
   // Server is the source of truth for time window
-  if (!isWithinJoinWindow(appointmentDate, role)) {
+  if (!shouldBypassWindow && !isWithinJoinWindow(appointmentDate, role)) {
     const now = new Date();
     if (now < new Date(appointmentDate.getTime() - DOCTOR_JOIN_WINDOW_MINUTES * 60 * 1000)) {
       throw {
