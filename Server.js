@@ -11,6 +11,7 @@ import userRouter from './routes/userRoute.js';
 import { videoConsultationRouter, initVideoConsultationSocket } from './modules/video-consultation/index.js';
 import { familyAccountRouter } from './modules/family-accounts/index.js';
 import { chatRouter, registerChatNamespace } from './modules/doctor-patient-chat/index.js';
+import { medicalRecordRouter } from './modules/digital-medical-records/index.js';
 
 // app config
 const app = express();
@@ -34,6 +35,7 @@ app.use('/api/user', userRouter);
 app.use('/api/video-consultations', videoConsultationRouter);
 app.use('/api/family-members', familyAccountRouter);
 app.use('/api/chat', chatRouter);
+app.use('/api/medical-records', medicalRecordRouter);
 
 app.get('/', (req, res) => {
   res.send('API working , form hello world')

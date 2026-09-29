@@ -268,6 +268,7 @@ export {
     findOrCreateConversation,
     listConversationsForUser,
     getOwnedConversation,
+    hasEligibleAppointment,
     getConversationById,
     listMessages,
     createMessage,
