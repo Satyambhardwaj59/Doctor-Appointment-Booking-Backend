@@ -13,6 +13,8 @@ import { familyAccountRouter } from './modules/family-accounts/index.js';
 import { chatRouter, registerChatNamespace } from './modules/doctor-patient-chat/index.js';
 import { medicalRecordRouter } from './modules/digital-medical-records/index.js';
 import { prescriptionRouter, medicationRouter } from './modules/prescription-management/index.js';
+import { queueRouter, registerQueueNamespace } from './modules/smart-live-queue/index.js';
+import { notificationRouter, registerNotificationNamespace } from './modules/notification-center/index.js';
 
 // app config
 const app = express();
@@ -39,6 +41,8 @@ app.use('/api/chat', chatRouter);
 app.use('/api/medical-records', medicalRecordRouter);
 app.use('/api/prescriptions', prescriptionRouter);
 app.use('/api/medications', medicationRouter);
+app.use('/api/queues', queueRouter);
+app.use('/api/notifications', notificationRouter);
 
 app.get('/', (req, res) => {
   res.send('API working , form hello world')
@@ -59,6 +63,8 @@ const io = new SocketIOServer(httpServer, {
 // Initialize socket handlers
 initVideoConsultationSocket(io);
 registerChatNamespace(io);
+registerQueueNamespace(io);
+registerNotificationNamespace(io);
 
 connectDB().then(() => {
   httpServer.listen(port, () => {

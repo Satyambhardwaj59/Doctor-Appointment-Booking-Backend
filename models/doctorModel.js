@@ -53,6 +53,10 @@ const doctorSchema = new mongoose.Schema({
     slots_booked: {
         type: Object,
         default: {}
+    },
+    notificationPreferences: {
+        type: Object,
+        default: () => ({})
     }
 
 }, {minimize: false})

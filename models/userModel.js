@@ -37,6 +37,10 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: "000000000"
     },
+    notificationPreferences: {
+        type: Object,
+        default: () => ({})
+    },
 
 }, {minimize: false})
 
