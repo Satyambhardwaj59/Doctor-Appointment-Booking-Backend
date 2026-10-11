@@ -2,6 +2,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import medicalRecordModel from '../models/medicalRecord.model.js';
 import { hasEligibleAppointment } from '../../doctor-patient-chat/index.js';
 import { getOwnedFamilyMember } from '../../family-accounts/index.js';
+import { createNotification } from '../../notification-center/services/notification.service.js';
 import {
     validateCreateRecord,
     validateUpdateRecord,
@@ -79,6 +80,21 @@ const createRecord = async ({ creatorId, creatorRole, body, files }) => {
         createdById: creatorId,
     });
 
+    if (creatorRole === 'doctor') {
+        try {
+            await createNotification({
+                userId: patientId,
+                recipientRole: 'patient',
+                type: 'MEDICAL_RECORD',
+                title: 'New medical record',
+                message: `Your doctor added a new ${record.recordType.toLowerCase().replace('_', ' ')} record`,
+                data: { recordId: record._id.toString() },
+            });
+        } catch (notifyError) {
+            console.log('Could not create medical-record notification');
+        }
+    }
+
     return { record, error: null };
 };
 
@@ -86,7 +102,7 @@ const createRecord = async ({ creatorId, creatorRole, body, files }) => {
 // appropriate field — defense in depth against ever returning another
 // person's records, on top of the ownership middleware.
 const listRecords = async (viewerId, viewerRole, filters = {}) => {
-    const query = { isDeleted: filters.archived === true || filters.archived === 'true' };
+    const query = { isDeleted: false };
 
     if (viewerRole === 'doctor') {
         query.doctorId = viewerId;
@@ -178,6 +194,22 @@ const updateRecord = async (recordId, viewerId, viewerRole, body) => {
     }
 
     await record.save();
+
+    if (viewerRole === 'doctor') {
+        try {
+            await createNotification({
+                userId: record.patientId,
+                recipientRole: 'patient',
+                type: 'MEDICAL_RECORD',
+                title: 'Medical record updated',
+                message: 'Your doctor updated one of your medical records',
+                data: { recordId: record._id.toString() },
+            });
+        } catch (notifyError) {
+            console.log('Could not create medical-record-updated notification');
+        }
+    }
+
     return { record, error: null };
 };
 
@@ -187,22 +219,6 @@ const deleteRecord = async (recordId, viewerId, viewerRole) => {
     if (!canEditRecord(record, viewerId, viewerRole)) return null;
 
     record.isDeleted = true;
-    await record.save();
-    return record;
-};
-
-const restoreRecord = async (recordId, viewerId, viewerRole) => {
-    const record = await medicalRecordModel
-        .findOne({ _id: recordId, isDeleted: true })
-        .catch(() => null);
-    if (!record) return null;
-
-    const owns =
-        (viewerRole === 'doctor' && record.doctorId === viewerId) ||
-        (viewerRole === 'patient' && record.patientId === viewerId);
-    if (!owns || !canEditRecord(record, viewerId, viewerRole)) return null;
-
-    record.isDeleted = false;
     await record.save();
     return record;
 };
@@ -250,13 +266,23 @@ const removeAttachment = async (recordId, attachmentId, viewerId, viewerRole) =>
     return { record, error: null };
 };
 
+// Ids of the patient's records linked to the given appointments (used by the
+// dashboard's "related records" links). Scoped to the patient; ids only.
+const listRecordRefsByAppointments = async (patientId, appointmentIds) => {
+    if (!appointmentIds || appointmentIds.length === 0) return [];
+    return medicalRecordModel
+        .find({ patientId, appointmentId: { $in: appointmentIds }, isDeleted: false })
+        .select('_id appointmentId')
+        .lean();
+};
+
 export {
     createRecord,
+    listRecordRefsByAppointments,
     listRecords,
     getOwnedRecord,
     updateRecord,
     deleteRecord,
-    restoreRecord,
     addAttachments,
     removeAttachment,
 };

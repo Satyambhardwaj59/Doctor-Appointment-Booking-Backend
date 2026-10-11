@@ -15,6 +15,7 @@ import { medicalRecordRouter } from './modules/digital-medical-records/index.js'
 import { prescriptionRouter, medicationRouter } from './modules/prescription-management/index.js';
 import { queueRouter, registerQueueNamespace } from './modules/smart-live-queue/index.js';
 import { notificationRouter, registerNotificationNamespace } from './modules/notification-center/index.js';
+import { dashboardRouter } from './modules/patient-health-dashboard/index.js';
 
 // app config
 const app = express();
@@ -43,6 +44,8 @@ app.use('/api/prescriptions', prescriptionRouter);
 app.use('/api/medications', medicationRouter);
 app.use('/api/queues', queueRouter);
 app.use('/api/notifications', notificationRouter);
+app.use('/api/patient', dashboardRouter);
+app.use('/api/patient-health-dashboard', dashboardRouter);
 
 app.get('/', (req, res) => {
   res.send('API working , form hello world')

@@ -375,15 +375,20 @@ const getPatientQueueForDoctor = async (patientId, doctorId) => {
     return { positions: mine.map((e) => patientView(fresh, state, e)) };
 };
 
-const getMyPositions = async (patientId) => {
+// familyMemberId: undefined = every entry on the account (the queue page),
+// null = the account holder's own entries, an id = that family member's.
+const getMyPositions = async (patientId, familyMemberId) => {
     const queues = await queueModel.find({ slotDate: slotDateFor() }).lean();
     if (queues.length === 0) return [];
 
-    const mine = await queueEntryModel.find({
+    const entryFilter = {
         patientId,
         queueId: { $in: queues.map((q) => q._id.toString()) },
         status: { $in: LIVE_STATUSES },
-    }).lean();
+    };
+    if (familyMemberId !== undefined) entryFilter.familyMemberId = familyMemberId;
+
+    const mine = await queueEntryModel.find(entryFilter).lean();
 
     const positions = [];
     const queueIds = [...new Set(mine.map((e) => e.queueId))];
