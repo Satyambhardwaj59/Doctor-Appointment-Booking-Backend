@@ -117,22 +117,23 @@ const appointmentCancel = async (req, res) => {
         const {appointmentId} = req.body;
         
         const appointmentData = await appointmentModel.findById(appointmentId);
+        if (!appointmentData) {
+            return res.json({ success: false, message: "Appointment not found" });
+        }
 
         await appointmentModel.findByIdAndUpdate(appointmentId, {cancelled: true});
 
         // releasing doctor slot
-
-        const {docId, slotDate, slotTime} = appointmentData
-
+        const {docId, slotDate, slotTime} = appointmentData;
         const doctorData = await doctorModel.findById(docId);
 
-        let slots_booked = doctorData.slots_booked;
+        if (doctorData && doctorData.slots_booked && Array.isArray(doctorData.slots_booked[slotDate])) {
+            let slots_booked = doctorData.slots_booked;
+            slots_booked[slotDate] = slots_booked[slotDate].filter(e => e !== slotTime);
+            await doctorModel.findByIdAndUpdate(docId, {slots_booked});
+        }
 
-        slots_booked[slotDate] = slots_booked[slotDate].filter(e => e !== slotTime);
-
-        await doctorModel.findByIdAndUpdate(docId, {slots_booked});
-
-        res.json({success: true, message: "Appointment Cancelled" })
+        res.json({success: true, message: "Appointment Cancelled" });
 
     } catch (error) {
         console.log(error);

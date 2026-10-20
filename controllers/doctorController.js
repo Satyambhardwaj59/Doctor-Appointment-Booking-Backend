@@ -40,7 +40,7 @@ const loginDoctor = async (req, res) => {
     const doctor = await doctorModel.findOne({ email });
 
     if (!doctor) {
-      res.json({ success: false, message: "Invalid credientials" })
+      return res.json({ success: false, message: "Invalid credentials" });
     }
 
     const isMatch = await bcrypt.compare(password, doctor.password);
@@ -48,14 +48,14 @@ const loginDoctor = async (req, res) => {
     if (isMatch) {
       const token = jwt.sign({ id: doctor._id }, process.env.JWT_SECRET);
 
-      res.json({ success: true, token })
+      return res.json({ success: true, token });
     } else {
-      res.json({ success: false, message: "Invalid credientials" })
+      return res.json({ success: false, message: "Invalid credentials" });
     }
 
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message })
+    res.json({ success: false, message: error.message });
   }
 };
 
@@ -70,7 +70,7 @@ const appointmentsDoctor = async (req, res) => {
 
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message })
+    res.json({ success: false, message: error.message });
   }
 };
 
@@ -83,9 +83,9 @@ const appointmentComplete = async (req, res) => {
 
     const appointmentData = await appointmentModel.findById(appointmentId);
 
-    if (appointmentData && appointmentData.docId === docId) {
+    if (appointmentData && String(appointmentData.docId) === String(docId)) {
 
-      await appointmentModel.findByIdAndUpdate(appointmentId, { isCompleted: true })
+      await appointmentModel.findByIdAndUpdate(appointmentId, { isCompleted: true });
       return res.json({ success: true, message: "Appointment Completed" });
 
     } else {
@@ -94,9 +94,9 @@ const appointmentComplete = async (req, res) => {
 
   } catch (error) {
     console.log(error);
-    res.json({ success: false, message: error.message })
+    res.json({ success: false, message: error.message });
   }
-}
+};
 
 // API to cancel appointment for doctor panel
 const appointmentCancel = async (req, res) => {
@@ -107,9 +107,9 @@ const appointmentCancel = async (req, res) => {
 
     const appointmentData = await appointmentModel.findById(appointmentId);
 
-    if (appointmentData && appointmentData.docId === docId) {
+    if (appointmentData && String(appointmentData.docId) === String(docId)) {
 
-      await appointmentModel.findByIdAndUpdate(appointmentId, { cancelled: true })
+      await appointmentModel.findByIdAndUpdate(appointmentId, { cancelled: true });
       return res.json({ success: true, message: "Appointment Cancelled" });
 
     } else {
