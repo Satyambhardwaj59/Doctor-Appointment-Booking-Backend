@@ -1,5 +1,6 @@
 import express from 'express';
 import {
+    getPrescriptionDocumentHandler,
     createNewPrescription,
     getPrescriptions,
     getPrescription,
@@ -22,6 +23,7 @@ const prescriptionRouter = express.Router();
 prescriptionRouter.post('/', authChatIdentity, doctorOnly, createNewPrescription);
 prescriptionRouter.get('/', authChatIdentity, getPrescriptions);
 prescriptionRouter.get('/:id', authChatIdentity, verifyPrescriptionAccess, getPrescription);
+prescriptionRouter.get('/:id/document', authChatIdentity, verifyPrescriptionAccess, getPrescriptionDocumentHandler);
 prescriptionRouter.patch('/:id', authChatIdentity, doctorOnly, verifyPrescriptionAccess, patchPrescription);
 
 prescriptionRouter.post(

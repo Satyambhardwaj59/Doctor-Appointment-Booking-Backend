@@ -1,4 +1,5 @@
 import {
+    getPrescriptionDocument,
     createPrescription,
     listPrescriptions,
     updatePrescription,
@@ -44,6 +45,22 @@ const getPrescriptions = async (req, res) => {
 // GET /api/prescriptions/:id (ownership verified by middleware)
 const getPrescription = async (req, res) => {
     res.json({ success: true, prescription: req.prescription });
+};
+
+// GET /api/prescriptions/:id/document
+// Ownership is already verified by verifyPrescriptionAccess (patient: own or
+// family-member prescriptions on their account; doctor: only the ones they
+// authored). The response contains patient health data, so it must never be
+// stored by browsers or intermediaries.
+const getPrescriptionDocumentHandler = async (req, res) => {
+    try {
+        const document = await getPrescriptionDocument(req.prescription);
+        res.set({ 'Cache-Control': 'no-store, max-age=0', Pragma: 'no-cache' });
+        res.json({ success: true, document });
+    } catch (error) {
+        console.log('Could not build prescription document'); // nothing from the record is logged
+        res.json({ success: false, message: 'Could not prepare the prescription document' });
+    }
 };
 
 // PATCH /api/prescriptions/:id (doctor only)
@@ -132,6 +149,7 @@ const patchMedicationStatus = async (req, res) => {
 };
 
 export {
+    getPrescriptionDocumentHandler,
     createNewPrescription,
     getPrescriptions,
     getPrescription,

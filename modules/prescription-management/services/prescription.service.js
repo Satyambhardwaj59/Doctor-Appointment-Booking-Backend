@@ -2,11 +2,14 @@ import { v2 as cloudinary } from 'cloudinary';
 import prescriptionModel from '../models/prescription.model.js';
 import medicationModel from '../models/medication.model.js';
 import appointmentModel from '../../../models/appointmentModel.js';
+import doctorModel from '../../../models/doctorModel.js';
+import userModel from '../../../models/userModel.js';
 import { getOwnedFamilyMember } from '../../family-accounts/index.js';
 import {
     createRecord as createMedicalRecord,
     updateRecord as updateMedicalRecord,
 } from '../../digital-medical-records/services/medicalRecord.service.js';
+import { createNotification } from '../../notification-center/services/notification.service.js';
 import {
     validateCreatePrescription,
     validateUpdatePrescription,
@@ -91,10 +94,32 @@ const expireStalePrescriptions = async (filter = {}) => {
 
 const markOverdueMissed = async (patientId) => {
     const cutoff = new Date(Date.now() - MISSED_GRACE_MINUTES * 60 * 1000);
+    const overdue = await medicationModel.find({ patientId, status: 'PENDING', scheduledTime: { $lt: cutoff } });
+    if (overdue.length === 0) return;
+
     await medicationModel.updateMany(
-        { patientId, status: 'PENDING', scheduledTime: { $lt: cutoff } },
+        { _id: { $in: overdue.map((entry) => entry._id) } },
         { $set: { status: 'MISSED' } }
     );
+
+    for (const entry of overdue) {
+        try {
+            await createNotification({
+                userId: entry.patientId,
+                recipientRole: 'patient',
+                type: 'MEDICATION',
+                title: 'Missed medication',
+                message: `You missed your ${entry.medicineName} dose scheduled at ${entry.scheduledTime.toLocaleTimeString()}`,
+                data: { medicationId: entry._id.toString(), prescriptionId: entry.prescriptionId },
+                // Ensures this specific missed dose is only ever notified
+                // once, even though this check re-runs on every
+                // list/today-medications call rather than a cron job.
+                dedupeKey: `medication-missed:${entry._id.toString()}`,
+            });
+        } catch (notifyError) {
+            console.log('Could not create medication-missed notification');
+        }
+    }
 };
 
 const uploadAttachments = async (files) => {
@@ -188,6 +213,19 @@ const createPrescription = async (doctorId, body) => {
     const entries = buildScheduleEntries(prescription);
     if (entries.length > 0) {
         await medicationModel.insertMany(entries);
+    }
+
+    try {
+        await createNotification({
+            userId: prescription.patientId,
+            recipientRole: 'patient',
+            type: 'PRESCRIPTION',
+            title: 'New prescription',
+            message: 'Your doctor added a new prescription',
+            data: { prescriptionId: prescription._id.toString() },
+        });
+    } catch (notifyError) {
+        console.log('Could not create new-prescription notification');
     }
 
     return { prescription, error: null };
@@ -312,6 +350,19 @@ const updatePrescription = async (prescriptionId, doctorId, body) => {
         } catch (error) {
             console.log('Could not sync linked medical record');
         }
+    }
+
+    try {
+        await createNotification({
+            userId: prescription.patientId,
+            recipientRole: 'patient',
+            type: 'PRESCRIPTION',
+            title: 'Prescription updated',
+            message: 'Your doctor updated your prescription',
+            data: { prescriptionId: prescription._id.toString() },
+        });
+    } catch (notifyError) {
+        console.log('Could not create prescription-updated notification');
     }
 
     return { prescription, error: null };
@@ -443,7 +494,96 @@ const updateMedicationStatus = async (medicationId, patientId, body) => {
     return { medication, error: null };
 };
 
+
+// ─── Printable / exportable document ────────────────────────────────────
+// Composes what a prescription document needs (clinic + patient details)
+// from the EXISTING models, for a prescription the caller has ALREADY been
+// authorized to read (verifyPrescriptionAccess). Deliberately minimal:
+//   - no doctorNotes, attachments, ids, phone, email, address or date of birth
+//   - the patient's age is computed here so the raw date of birth never leaves
+const calculateAge = (value) => {
+    if (!value) return null;
+    const dob = new Date(value);
+    if (isNaN(dob.getTime())) return null;
+    const now = new Date();
+    let age = now.getFullYear() - dob.getFullYear();
+    const monthDiff = now.getMonth() - dob.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) age -= 1;
+    return age >= 0 && age < 130 ? age : null;
+};
+
+const cleanGender = (gender) => (['Male', 'Female', 'Other'].includes(gender) ? gender : '');
+
+const getPrescriptionDocument = async (prescription) => {
+    const [doctor, appointment] = await Promise.all([
+        doctorModel.findById(prescription.doctorId).select('name speciality degree experience address').lean().catch(() => null),
+        // Booking-time snapshot: still available if a family member was
+        // later removed or the profile changed.
+        appointmentModel
+            .findById(prescription.appointmentId)
+            .select('userData.name userData.gender userData.dob familyMemberData')
+            .lean()
+            .catch(() => null),
+    ]);
+
+    let patient;
+    if (prescription.familyMemberId) {
+        // Scoped by the prescription's own patientId, never by anything from the request.
+        const member = await getOwnedFamilyMember(prescription.patientId, prescription.familyMemberId);
+        patient = {
+            name: member?.name || appointment?.familyMemberData?.name || 'Family member',
+            gender: cleanGender(member?.gender),
+            age: calculateAge(member?.dateOfBirth),
+            relationship: member?.relationship || appointment?.familyMemberData?.relationship || 'OTHER',
+            isFamilyMember: true,
+        };
+    } else {
+        let user = appointment?.userData;
+        if (!user?.name) {
+            user = await userModel.findById(prescription.patientId).select('name gender dob').lean().catch(() => null);
+        }
+        patient = {
+            name: user?.name || 'Patient',
+            gender: cleanGender(user?.gender),
+            age: calculateAge(user?.dob),
+            relationship: 'SELF',
+            isFamilyMember: false,
+        };
+    }
+
+    return {
+        prescriptionId: prescription._id.toString(),
+        prescriptionDate: prescription.prescriptionDate,
+        validUntil: prescription.validUntil,
+        status: prescription.status,
+        diagnosis: prescription.diagnosis || '',
+        instructions: prescription.instructions || '',
+        medicines: (prescription.medicines || []).map((m) => ({
+            name: m.name,
+            dosage: m.dosage,
+            form: m.form,
+            frequency: m.frequency,
+            timing: m.timing,
+            duration: m.duration || '',
+            quantity: m.quantity || 0,
+            instructions: m.instructions || '',
+        })),
+        doctor: {
+            name: doctor?.name || 'Doctor',
+            speciality: doctor?.speciality || '',
+            degree: doctor?.degree || '',
+            experience: doctor?.experience || '',
+            address: {
+                line1: doctor?.address?.line1 || '',
+                line2: doctor?.address?.line2 || '',
+            },
+        },
+        patient,
+    };
+};
+
 export {
+    getPrescriptionDocument,
     createPrescription,
     listPrescriptions,
     getOwnedPrescription,

@@ -223,6 +223,17 @@ const deleteRecord = async (recordId, viewerId, viewerRole) => {
     return record;
 };
 
+const restoreRecord = async (recordId, viewerId, viewerRole) => {
+    const record = await medicalRecordModel
+        .findOne({ _id: recordId, isDeleted: true })
+        .catch(() => null);
+    if (!record || !canEditRecord(record, viewerId, viewerRole)) return null;
+
+    record.isDeleted = false;
+    await record.save();
+    return record;
+};
+
 const addAttachments = async (recordId, viewerId, viewerRole, files) => {
     const record = await getOwnedRecord(recordId, viewerId, viewerRole);
     if (!record) return { record: null, error: 'Record not found' };
@@ -283,6 +294,7 @@ export {
     getOwnedRecord,
     updateRecord,
     deleteRecord,
+    restoreRecord,
     addAttachments,
     removeAttachment,
 };
